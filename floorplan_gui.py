@@ -3,8 +3,9 @@ GUI application for the floorplanning tool.
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import random
+import json
 from floorplan_core import Block, FloorPlan
 from floorplan_algorithm import calculate_floorplan
 
@@ -143,12 +144,26 @@ class FloorPlanGUI:
                                 command=self._clear_all, bg="#ff9800", fg="white")
         clear_button.pack(side=tk.LEFT, padx=5)
         
+        # Save/Load buttons
+        save_load_frame = tk.Frame(left_panel)
+        save_load_frame.pack(pady=10)
+        
+        save_button = tk.Button(save_load_frame, text="Save Blocks", 
+                               command=self._save_blocks, bg="#4CAF50", fg="white",
+                               font=("Arial", 10))
+        save_button.pack(side=tk.LEFT, padx=5)
+        
+        load_button = tk.Button(save_load_frame, text="Load Blocks", 
+                               command=self._load_blocks, bg="#2196F3", fg="white",
+                               font=("Arial", 10))
+        load_button.pack(side=tk.LEFT, padx=5)
+        
         # Calculate button
         calculate_button = tk.Button(left_panel, text="Calculate Layout", 
                                      command=self._calculate_layout,
                                      bg="#2196F3", fg="white", 
                                      font=("Arial", 12, "bold"), height=2)
-        calculate_button.pack(pady=20, padx=10, fill=tk.X)
+        calculate_button.pack(pady=10, padx=10, fill=tk.X)
         
         # --- RIGHT PANEL WIDGETS ---
         
@@ -259,6 +274,102 @@ class FloorPlanGUI:
         self.neighbor_combo['values'] = names
         if self.neighbor_var.get() not in names:
             self.neighbor_var.set("None")
+    
+    def _save_blocks(self):
+        """Save current blocks to a JSON file."""
+        if not self.blocks:
+            messagebox.showwarning("Warning", "No blocks to save.")
+            return
+        
+        # Ask user for file location
+        filename = filedialog.asksaveasfilename(
+            title="Save Blocks",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if not filename:
+            return  # User cancelled
+        
+        try:
+            # Convert blocks to dictionary format
+            blocks_data = []
+            for block in self.blocks:
+                block_dict = {
+                    "name": block.name,
+                    "width": block.original_width,
+                    "height": block.original_height,
+                    "preferred_location": block.preferred_location,
+                    "neighbor": block.neighbor
+                }
+                blocks_data.append(block_dict)
+            
+            # Save to file
+            with open(filename, 'w') as f:
+                json.dump(blocks_data, f, indent=2)
+            
+            messagebox.showinfo("Success", f"Saved {len(self.blocks)} blocks to {filename}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save blocks: {str(e)}")
+    
+    def _load_blocks(self):
+        """Load blocks from a JSON file."""
+        # Ask user for file location
+        filename = filedialog.askopenfilename(
+            title="Load Blocks",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if not filename:
+            return  # User cancelled
+        
+        try:
+            # Load from file
+            with open(filename, 'r') as f:
+                blocks_data = json.load(f)
+            
+            # Validate data
+            if not isinstance(blocks_data, list):
+                raise ValueError("Invalid file format: expected a list of blocks")
+            
+            # Clear existing blocks
+            if self.blocks:
+                if not messagebox.askyesno("Confirm", "Clear current blocks and load from file?"):
+                    return
+                self._clear_all()
+            
+            # Load blocks
+            for block_dict in blocks_data:
+                name = block_dict.get("name", "")
+                width = float(block_dict.get("width", 0))
+                height = float(block_dict.get("height", 0))
+                location = block_dict.get("preferred_location", "don't care")
+                neighbor = block_dict.get("neighbor", None)
+                
+                # Validate
+                if not name or width <= 0 or height <= 0:
+                    raise ValueError(f"Invalid block data: {block_dict}")
+                
+                # Create block
+                block = Block(name, width, height, location, neighbor)
+                self.blocks.append(block)
+                
+                # Update listbox
+                display_text = f"{name} ({width}x{height})"
+                if location != "don't care":
+                    display_text += f" - {location}"
+                if neighbor:
+                    display_text += f" - abuts {neighbor}"
+                self.blocks_listbox.insert(tk.END, display_text)
+            
+            # Update neighbor dropdown
+            self._update_neighbor_dropdown()
+            
+            messagebox.showinfo("Success", f"Loaded {len(self.blocks)} blocks from {filename}")
+        except json.JSONDecodeError:
+            messagebox.showerror("Error", "Invalid JSON file format")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load blocks: {str(e)}")
     
     def _calculate_layout(self):
         """Calculate and display the floorplan."""

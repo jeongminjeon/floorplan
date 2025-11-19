@@ -134,6 +134,8 @@ Try different combinations of preferences and see which gives the smallest area!
 ### Action Buttons:
 - **Delete Selected**: Remove a block from the list
 - **Clear All**: Remove all blocks and start over
+- **Save Blocks**: Save your blocks to a file for later use
+- **Load Blocks**: Load blocks from a previously saved file
 - **Calculate Layout**: Run the optimization algorithm
 
 ## Troubleshooting
@@ -160,6 +162,12 @@ Try different combinations of preferences and see which gives the smallest area!
   - Make sure Python is installed correctly
   - Try running `python --version` in Command Prompt
   - Reinstall Python if needed
+
+### Problem: Can't load saved file
+- **Solution**:
+  - Make sure the file is a `.json` file created by this tool
+  - Check that the file isn't corrupted
+  - Try opening the file in a text editor to verify it's valid JSON
 
 ## Understanding Dimensions
 
@@ -216,19 +224,48 @@ This prevents overly narrow layouts:
 
 ## Saving Your Work
 
-Currently, the tool doesn't save floorplans automatically. To save:
+### Saving Block Configurations
 
-### Method 1: Screenshot
+You can save your block list to reuse later:
+
+1. After adding your blocks, click **Save Blocks**
+2. Choose where to save the file (it will be a `.json` file)
+3. Give it a meaningful name like `my_floorplan.json`
+4. Click Save
+
+The file saves:
+- All block names
+- All dimensions (width and height)
+- Location preferences
+- Neighbor relationships
+
+### Loading Saved Blocks
+
+To reuse a saved configuration:
+
+1. Click **Load Blocks**
+2. Browse to your saved `.json` file
+3. Click Open
+4. Your blocks will be loaded automatically
+
+**Note**: Loading will replace your current blocks (you'll be asked to confirm).
+
+### Saving the Visual Layout
+
+To save the calculated floorplan image:
+
+**Method 1: Screenshot**
 1. Press `Windows Key + Shift + S`
-2. Select the area to capture
+2. Select the floorplan area
 3. Paste into Paint or Word
 
-### Method 2: Write Down
-Write down your block list and the final dimensions for later reference.
+**Method 2: Write Down**
+Take note of the final dimensions shown in the info label.
 
 ## Example Projects
 
 ### Example 1: Office Layout
+Create these blocks, then save as `office.json`:
 ```
 Reception: 120 x 80 (top-left)
 Conference: 150 x 100 (don't care)
@@ -237,6 +274,7 @@ Kitchen: 80 x 60 (bottom-right)
 ```
 
 ### Example 2: Computer Motherboard
+Create these blocks, then save as `motherboard.json`:
 ```
 CPU: 40 x 40 (top-left)
 RAM: 80 x 20 (don't care, neighbor: CPU)
@@ -244,6 +282,8 @@ GPU: 120 x 60 (don't care)
 Storage: 30 x 30 (bottom-right)
 PowerSupply: 50 x 50 (bottom-left)
 ```
+
+**Tip**: Once saved, you can quickly reload these projects anytime!
 
 ## Getting Help
 
