@@ -1,0 +1,10 @@
+# Floorplanning Tool - Python Dependencies
+#
+# This project uses only Python standard library modules.
+# No external packages are required.
+#
+# Python 3.6+ required
+# - tkinter (built-in GUI library)
+# - copy (built-in)
+# - random (built-in)
+
