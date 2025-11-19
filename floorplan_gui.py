@@ -76,7 +76,18 @@ class FloorPlanGUI:
         tk.Label(input_frame, text="Preferred Location:").grid(row=3, column=0, sticky=tk.W, pady=5)
         self.location_var = tk.StringVar(value="don't care")
         location_combo = ttk.Combobox(input_frame, textvariable=self.location_var, width=18, state="readonly")
-        location_combo['values'] = ("don't care", "top-left", "top-right", "bottom-left", "bottom-right")
+        location_combo['values'] = (
+            "don't care",
+            "top-left-corner",
+            "top-left-quad",
+            "top-right-corner",
+            "top-right-quad",
+            "bottom-left-corner",
+            "bottom-left-quad",
+            "bottom-right-corner",
+            "bottom-right-quad",
+            "center"
+        )
         location_combo.grid(row=3, column=1, pady=5, padx=5)
         
         # Neighbor
@@ -214,13 +225,18 @@ class FloorPlanGUI:
         block = Block(name, width, height, location, neighbor)
         self.blocks.append(block)
         
-        # Update listbox
-        display_text = f"{name} ({width}x{height})"
-        if location != "don't care":
-            display_text += f" - {location}"
-        if neighbor:
-            display_text += f" - abuts {neighbor}"
-        self.blocks_listbox.insert(tk.END, display_text)
+        # Sort blocks by constraints first, then by name
+        self.blocks.sort(key=self._constraint_sort_key)
+        
+        # Rebuild listbox with sorted order
+        self.blocks_listbox.delete(0, tk.END)
+        for b in self.blocks:
+            display_text = f"{b.name} ({b.width}x{b.height})"
+            if b.preferred_location != "don't care":
+                display_text += f" - {b.preferred_location}"
+            if b.neighbor:
+                display_text += f" - abuts {b.neighbor}"
+            self.blocks_listbox.insert(tk.END, display_text)
         
         # Update neighbor dropdown
         self._update_neighbor_dropdown()
@@ -267,6 +283,52 @@ class FloorPlanGUI:
         self.canvas.delete("all")
         self.info_label.config(text="Add blocks and click 'Calculate Layout'")
         self._update_neighbor_dropdown()
+    
+    def _natural_sort_key(self, text):
+        """Generate a key for natural sorting (b1, b2, b3, ..., b10 instead of b1, b10, b2)."""
+        import re
+        parts = []
+        for part in re.split(r'(\d+)', text):
+            if part.isdigit():
+                parts.append(int(part))
+            else:
+                parts.append(part.lower())
+        return parts
+    
+    def _constraint_sort_key(self, block):
+        """
+        Generate a sort key that prioritizes blocks by constraints.
+        
+        Sorting priority:
+        1. Blocks with both location AND neighbor constraints (highest priority)
+        2. Blocks with corner location constraints
+        3. Blocks with quadrant location constraints
+        4. Blocks with center location constraint
+        5. Blocks with only neighbor constraints
+        6. Blocks with no constraints (lowest priority)
+        
+        Within each group, sort alphabetically by name.
+        """
+        has_location = block.preferred_location != "don't care"
+        has_neighbor = block.neighbor is not None
+        location = block.preferred_location
+        
+        # Priority levels (lower number = higher priority = shown first)
+        if has_location and has_neighbor:
+            priority = 0  # Both constraints - highest priority
+        elif 'corner' in location:
+            priority = 1  # Corner locations
+        elif 'quad' in location:
+            priority = 2  # Quadrant locations
+        elif location == 'center':
+            priority = 3  # Center location
+        elif has_neighbor:
+            priority = 4  # Only neighbor constraint
+        else:
+            priority = 5  # No constraints - lowest priority
+        
+        # Return tuple: (priority, natural_name_sort)
+        return (priority, self._natural_sort_key(block.name))
     
     def _update_neighbor_dropdown(self):
         """Update the neighbor dropdown with current block names."""
@@ -353,13 +415,17 @@ class FloorPlanGUI:
                 # Create block
                 block = Block(name, width, height, location, neighbor)
                 self.blocks.append(block)
-                
-                # Update listbox
-                display_text = f"{name} ({width}x{height})"
-                if location != "don't care":
-                    display_text += f" - {location}"
-                if neighbor:
-                    display_text += f" - abuts {neighbor}"
+            
+            # Sort blocks by constraints first, then by name
+            self.blocks.sort(key=self._constraint_sort_key)
+            
+            # Update listbox with sorted blocks
+            for block in self.blocks:
+                display_text = f"{block.name} ({block.width}x{block.height})"
+                if block.preferred_location != "don't care":
+                    display_text += f" - {block.preferred_location}"
+                if block.neighbor:
+                    display_text += f" - abuts {block.neighbor}"
                 self.blocks_listbox.insert(tk.END, display_text)
             
             # Update neighbor dropdown

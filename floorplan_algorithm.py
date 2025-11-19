@@ -71,26 +71,60 @@ def _get_initial_solution(blocks):
 
 
 def _group_neighbors(blocks):
-    """Group blocks that should be placed adjacent to each other."""
+    """Group blocks that should be placed adjacent to each other (handles chains)."""
     groups = []
     used = set()
     
+    # Build a map of who depends on whom
+    block_map = {b.name: b for b in blocks}
+    depends_on = {}  # block_name -> neighbor_name
+    depended_by = {}  # block_name -> [list of blocks that depend on it]
+    
+    for block in blocks:
+        if block.neighbor:
+            depends_on[block.name] = block.neighbor
+            if block.neighbor not in depended_by:
+                depended_by[block.neighbor] = []
+            depended_by[block.neighbor].append(block.name)
+    
+    # Find root blocks (blocks that are not dependent on anyone or start chains)
     for block in blocks:
         if block.name in used:
             continue
         
-        group = [block]
-        used.add(block.name)
+        # Find the root of this chain (the block that no one depends on in this chain)
+        current = block
+        chain_members = set([block.name])
         
-        # Find neighbor if specified
-        if block.neighbor:
-            for other in blocks:
-                if other.name == block.neighbor and other.name not in used:
-                    group.append(other)
-                    used.add(other.name)
-                    break
+        # Follow dependencies backwards to find the root
+        while current.name in depends_on:
+            neighbor_name = depends_on[current.name]
+            if neighbor_name in chain_members:  # Circular dependency, break
+                break
+            if neighbor_name in block_map:
+                current = block_map[neighbor_name]
+                chain_members.add(current.name)
+            else:
+                break
         
-        groups.append(group)
+        # Now current is the root, build the group by following forward dependencies
+        group = []
+        to_process = [current.name]
+        
+        while to_process:
+            current_name = to_process.pop(0)
+            if current_name in used or current_name not in block_map:
+                continue
+            
+            group.append(block_map[current_name])
+            used.add(current_name)
+            
+            # Add blocks that depend on this one
+            if current_name in depended_by:
+                to_process.extend(depended_by[current_name])
+        
+        if group:
+            groups.append(group)
     
     return groups
 
@@ -120,77 +154,192 @@ def _place_blocks(neighbor_groups, strategy):
 
 
 def _place_corners_first(floorplan, neighbor_groups):
-    """Place blocks with corner preferences first, then fill remaining space."""
-    corner_prefs = {
-        'top-left': [],
-        'top-right': [],
-        'bottom-left': [],
-        'bottom-right': [],
+    """Place blocks with location preferences (corners, quadrants, center)."""
+    location_prefs = {
+        'top-left-corner': [],
+        'top-left-quad': [],
+        'top-right-corner': [],
+        'top-right-quad': [],
+        'bottom-left-corner': [],
+        'bottom-left-quad': [],
+        'bottom-right-corner': [],
+        'bottom-right-quad': [],
+        'center': [],
         "don't care": []
     }
     
     # Categorize groups by preferred location
     for group in neighbor_groups:
         pref = group[0].preferred_location
-        corner_prefs[pref].append(group)
+        # Handle legacy location names for backward compatibility
+        if pref == 'top-left':
+            pref = 'top-left-corner'
+        elif pref == 'top-right':
+            pref = 'top-right-corner'
+        elif pref == 'bottom-left':
+            pref = 'bottom-left-corner'
+        elif pref == 'bottom-right':
+            pref = 'bottom-right-corner'
+        
+        if pref in location_prefs:
+            location_prefs[pref].append(group)
+        else:
+            location_prefs["don't care"].append(group)
     
-    # Place top-left corner blocks
-    current_x, current_y = 0, 0
-    for group in corner_prefs['top-left']:
-        _place_group_at(group, current_x, current_y, floorplan)
-        current_y += max(b.height for b in group)
-    
-    # Place top-right corner blocks (we'll adjust x later)
-    tr_groups = []
+    # Place exact corner blocks first
+    tlc_groups = []
     current_y = 0
-    for group in corner_prefs['top-right']:
-        temp_x = 0  # Placeholder
-        _place_group_at(group, temp_x, current_y, floorplan)
-        tr_groups.append((group, current_y))
+    for group in location_prefs['top-left-corner']:
+        _place_group_at(group, 0, current_y, floorplan)
+        tlc_groups.append(group)
         current_y += max(b.height for b in group)
     
-    # Place bottom-left corner blocks (we'll adjust y later)
-    bl_groups = []
+    trc_groups = []
+    current_y = 0
+    for group in location_prefs['top-right-corner']:
+        _place_group_at(group, 0, current_y, floorplan)  # Temporary, will adjust
+        trc_groups.append((group, current_y))
+        current_y += max(b.height for b in group)
+    
+    blc_groups = []
     current_x = 0
-    for group in corner_prefs['bottom-left']:
-        temp_y = 0  # Placeholder
-        _place_group_at(group, current_x, temp_y, floorplan)
-        bl_groups.append((group, current_x))
+    for group in location_prefs['bottom-left-corner']:
+        _place_group_at(group, current_x, 0, floorplan)  # Temporary, will adjust
+        blc_groups.append((group, current_x))
         current_x += max(b.width for b in group)
     
-    # Place bottom-right corner blocks (we'll adjust both later)
-    br_groups = []
-    for group in corner_prefs['bottom-right']:
-        _place_group_at(group, 0, 0, floorplan)
-        br_groups.append(group)
+    brc_groups = []
+    for group in location_prefs['bottom-right-corner']:
+        _place_group_at(group, 0, 0, floorplan)  # Temporary, will adjust
+        brc_groups.append(group)
     
-    # Place "don't care" blocks in remaining space
-    for group in corner_prefs["don't care"]:
+    # Place quadrant blocks - they have more flexibility
+    for pref_type in ['top-left-quad', 'top-right-quad', 'bottom-left-quad', 'bottom-right-quad']:
+        for group in location_prefs[pref_type]:
+            pos = _find_quadrant_position(group, floorplan, pref_type)
+            _place_group_at(group, pos[0], pos[1], floorplan)
+    
+    # Place center blocks
+    for group in location_prefs['center']:
+        pos = _find_center_position(group, floorplan)
+        _place_group_at(group, pos[0], pos[1], floorplan)
+    
+    # Place "don't care" blocks in best remaining space
+    for group in location_prefs["don't care"]:
         pos = _find_best_position(group, floorplan)
         _place_group_at(group, pos[0], pos[1], floorplan)
     
-    # Adjust positions to minimize bounding box
+    # Adjust corner positions to actual corners
     floorplan.update_bounding_box()
     
-    # Move top-right blocks to right edge
-    for group, y_pos in tr_groups:
+    # Adjust top-right corner blocks
+    for group, y_pos in trc_groups:
         max_width = max(b.width for b in group)
         for block in group:
             block.x = floorplan.bounding_width - max_width + (block.x - 0)
     
-    # Move bottom-left blocks to bottom edge
-    for group, x_pos in bl_groups:
+    # Adjust bottom-left corner blocks
+    for group, x_pos in blc_groups:
         max_height = max(b.height for b in group)
         for block in group:
             block.y = floorplan.bounding_height - max_height + (block.y - 0)
     
-    # Move bottom-right blocks to bottom-right corner
-    for group in br_groups:
+    # Adjust bottom-right corner blocks
+    for group in brc_groups:
         max_width = max(b.width for b in group)
         max_height = max(b.height for b in group)
         for block in group:
             block.x = floorplan.bounding_width - max_width + (block.x - 0)
             block.y = floorplan.bounding_height - max_height + (block.y - 0)
+
+
+def _find_quadrant_position(group, floorplan, quadrant):
+    """Find a suitable position within a specific quadrant."""
+    if not floorplan.blocks:
+        return (0, 0)
+    
+    floorplan.update_bounding_box()
+    
+    group_width = sum(b.width for b in group) if len(group) > 1 else group[0].width
+    group_height = max(b.height for b in group) if len(group) > 1 else group[0].height
+    
+    # Define quadrant boundaries
+    mid_x = floorplan.bounding_width / 2
+    mid_y = floorplan.bounding_height / 2
+    
+    if quadrant == 'top-left-quad':
+        candidates = [(x, y) for x in range(0, int(mid_x), 10) 
+                     for y in range(0, int(mid_y), 10)]
+    elif quadrant == 'top-right-quad':
+        candidates = [(x, y) for x in range(int(mid_x), int(floorplan.bounding_width), 10) 
+                     for y in range(0, int(mid_y), 10)]
+    elif quadrant == 'bottom-left-quad':
+        candidates = [(x, y) for x in range(0, int(mid_x), 10) 
+                     for y in range(int(mid_y), int(floorplan.bounding_height), 10)]
+    else:  # bottom-right-quad
+        candidates = [(x, y) for x in range(int(mid_x), int(floorplan.bounding_width), 10) 
+                     for y in range(int(mid_y), int(floorplan.bounding_height), 10)]
+    
+    # Add fallback positions
+    candidates.append((0, 0))
+    
+    return _find_best_from_candidates(group, floorplan, candidates, group_width, group_height)
+
+
+def _find_center_position(group, floorplan):
+    """Find a position near the center of the floorplan."""
+    if not floorplan.blocks:
+        return (0, 0)
+    
+    floorplan.update_bounding_box()
+    
+    group_width = sum(b.width for b in group) if len(group) > 1 else group[0].width
+    group_height = max(b.height for b in group) if len(group) > 1 else group[0].height
+    
+    # Try positions near center
+    mid_x = floorplan.bounding_width / 2
+    mid_y = floorplan.bounding_height / 2
+    
+    candidates = [
+        (mid_x - group_width / 2, mid_y - group_height / 2),  # Exact center
+        (mid_x, mid_y),
+        (mid_x - group_width, mid_y),
+        (mid_x, mid_y - group_height),
+        (0, 0)  # Fallback
+    ]
+    
+    return _find_best_from_candidates(group, floorplan, candidates, group_width, group_height)
+
+
+def _find_best_from_candidates(group, floorplan, candidates, group_width, group_height):
+    """Find the best position from a list of candidates."""
+    best_pos = candidates[0] if candidates else (0, 0)
+    best_area = float('inf')
+    
+    for pos in candidates:
+        x, y = max(0, pos[0]), max(0, pos[1])
+        
+        # Check if position causes overlap
+        overlaps = False
+        for block in floorplan.blocks:
+            if not (x + group_width <= block.x or block.x + block.width <= x or
+                   y + group_height <= block.y or block.y + block.height <= y):
+                overlaps = True
+                break
+        
+        if overlaps:
+            continue
+        
+        # Calculate resulting bounding box
+        new_width = max(floorplan.bounding_width, x + group_width)
+        new_height = max(floorplan.bounding_height, y + group_height)
+        area = new_width * new_height
+        
+        if area < best_area:
+            best_area = area
+            best_pos = (x, y)
+    
+    return best_pos
 
 
 def _place_row_based(floorplan, neighbor_groups):
@@ -264,24 +413,81 @@ def _choose_best_orientation(group):
 
 
 def _place_group_at(group, x, y, floorplan):
-    """Place a group of blocks at specified position."""
+    """Place a group of blocks at specified position (handles chains)."""
+    if len(group) == 0:
+        return
+    
     if len(group) == 1:
         block = group[0]
         block.x = x
         block.y = y
         floorplan.add_block(block)
     else:
-        # Place neighbor blocks adjacent to each other
-        block1, block2 = group[0], group[1]
+        # Place multiple blocks in a chain - need to respect neighbor relationships
+        # Build dependency map for this group
+        block_map = {b.name: b for b in group}
+        depends_on = {b.name: b.neighbor for b in group if b.neighbor and b.neighbor in block_map}
         
-        # Try horizontal placement
-        block1.x = x
-        block1.y = y
-        block2.x = x + block1.width
-        block2.y = y
+        # Find root (block with no dependency in this group)
+        roots = [b for b in group if b.name not in depends_on or depends_on[b.name] not in block_map]
+        if not roots:
+            # Circular or all depend on external - just use first
+            roots = [group[0]]
         
-        floorplan.add_block(block1)
-        floorplan.add_block(block2)
+        # Place root block
+        current_block = roots[0]
+        current_block.x = x
+        current_block.y = y
+        floorplan.add_block(current_block)
+        placed = {current_block.name}
+        
+        # Place remaining blocks adjacent to their neighbors
+        remaining = [b for b in group if b.name not in placed]
+        max_iterations = len(group) * 2
+        iteration = 0
+        
+        while remaining and iteration < max_iterations:
+            iteration += 1
+            placed_any = False
+            
+            for block in list(remaining):
+                if block.neighbor and block.neighbor in placed and block.neighbor in block_map:
+                    # Place this block adjacent to its neighbor
+                    neighbor_block = block_map[block.neighbor]
+                    
+                    # Try horizontal placement first (right side of neighbor)
+                    block.x = neighbor_block.x + neighbor_block.width
+                    block.y = neighbor_block.y
+                    
+                    # Check if this causes overlap with already placed blocks
+                    overlaps = any(
+                        not (block.x + block.width <= placed_block.x or 
+                             placed_block.x + placed_block.width <= block.x or
+                             block.y + block.height <= placed_block.y or 
+                             placed_block.y + placed_block.height <= block.y)
+                        for placed_name in placed 
+                        for placed_block in [block_map.get(placed_name)]
+                        if placed_block
+                    )
+                    
+                    if overlaps:
+                        # Try vertical placement (below neighbor)
+                        block.x = neighbor_block.x
+                        block.y = neighbor_block.y + neighbor_block.height
+                    
+                    floorplan.add_block(block)
+                    placed.add(block.name)
+                    remaining.remove(block)
+                    placed_any = True
+            
+            if not placed_any:
+                # Can't place any more based on dependencies, place remaining arbitrarily
+                for block in remaining:
+                    block.x = x
+                    block.y = y
+                    floorplan.add_block(block)
+                    placed.add(block.name)
+                remaining.clear()
 
 
 def _find_best_position(group, floorplan):
@@ -335,21 +541,27 @@ def _find_best_position(group, floorplan):
 
 
 def _optimize_placement(floorplan):
-    """Try to optimize the placement by compacting blocks."""
+    """Try to optimize the placement by compacting blocks without violating location constraints."""
     if not floorplan.blocks:
         return
     
-    # Try to shift blocks towards origin
+    # Try to shift blocks towards origin, but respect location constraints
     max_iterations = 10
     for _ in range(max_iterations):
         improved = False
         
         for block in floorplan.blocks:
-            # Try moving left
+            # Skip blocks with strict location constraints
+            if block.preferred_location in ['top-left-corner', 'top-right-corner', 
+                                            'bottom-left-corner', 'bottom-right-corner',
+                                            'center']:
+                continue
+            
+            # Try moving left (for blocks without location constraints or quadrant blocks)
             original_x = block.x
             while block.x > 0:
                 block.x -= 1
-                if floorplan.has_overlaps():
+                if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
                     block.x = original_x
                     break
                 original_x = block.x
@@ -359,7 +571,7 @@ def _optimize_placement(floorplan):
             original_y = block.y
             while block.y > 0:
                 block.y -= 1
-                if floorplan.has_overlaps():
+                if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
                     block.y = original_y
                     break
                 original_y = block.y
@@ -369,6 +581,167 @@ def _optimize_placement(floorplan):
             break
     
     floorplan.update_bounding_box()
+
+
+def _enforce_corner_constraints(floorplan):
+    """
+    Post-processing step: Force blocks with corner constraints to exact corner positions.
+    This ensures corner constraints are always satisfied after optimization.
+    """
+    if not floorplan.blocks:
+        return
+    
+    # First pass: Identify corner blocks
+    corner_blocks = {}
+    for block in floorplan.blocks:
+        pref = block.preferred_location
+        # Handle legacy names
+        if pref == 'top-left':
+            pref = 'top-left-corner'
+        elif pref == 'top-right':
+            pref = 'top-right-corner'
+        elif pref == 'bottom-left':
+            pref = 'bottom-left-corner'
+        elif pref == 'bottom-right':
+            pref = 'bottom-right-corner'
+        
+        if 'corner' in pref:
+            corner_blocks[pref] = block
+    
+    if not corner_blocks:
+        return  # No corner constraints to enforce
+    
+    # Update bounding box
+    floorplan.update_bounding_box()
+    
+    # Snap each corner block to its exact position
+    # Do this iteratively and repack to avoid overlaps
+    max_iterations = 20
+    for iteration in range(max_iterations):
+        moved_any = False
+        floorplan.update_bounding_box()
+        
+        # Top-left corner: (0, 0)
+        if 'top-left-corner' in corner_blocks:
+            block = corner_blocks['top-left-corner']
+            if block.x != 0 or block.y != 0:
+                block.x = 0
+                block.y = 0
+                moved_any = True
+        
+        # Top-right corner
+        if 'top-right-corner' in corner_blocks:
+            block = corner_blocks['top-right-corner']
+            expected_x = floorplan.bounding_width - block.width
+            if abs(block.x - expected_x) > 1:
+                block.x = expected_x
+                moved_any = True
+            if block.y != 0:
+                block.y = 0
+                moved_any = True
+        
+        # Bottom-left corner
+        if 'bottom-left-corner' in corner_blocks:
+            block = corner_blocks['bottom-left-corner']
+            expected_y = floorplan.bounding_height - block.height
+            if block.x != 0:
+                block.x = 0
+                moved_any = True
+            if abs(block.y - expected_y) > 1:
+                block.y = expected_y
+                moved_any = True
+        
+        # Bottom-right corner
+        if 'bottom-right-corner' in corner_blocks:
+            block = corner_blocks['bottom-right-corner']
+            expected_x = floorplan.bounding_width - block.width
+            expected_y = floorplan.bounding_height - block.height
+            if abs(block.x - expected_x) > 1 or abs(block.y - expected_y) > 1:
+                block.x = expected_x
+                block.y = expected_y
+                moved_any = True
+        
+        # If we have overlaps after snapping, resolve them by moving non-corner blocks
+        if floorplan.has_overlaps():
+            # Find all overlapping blocks
+            overlapping_blocks = set()
+            for i, b1 in enumerate(floorplan.blocks):
+                for b2 in floorplan.blocks[i+1:]:
+                    if b1.overlaps(b2):
+                        # Only move the non-corner block
+                        if b1.preferred_location not in corner_blocks.values():
+                            overlapping_blocks.add(b1)
+                        if b2.preferred_location not in corner_blocks.values():
+                            overlapping_blocks.add(b2)
+            
+            # Move overlapping non-corner blocks to non-overlapping positions
+            for block in overlapping_blocks:
+                if block.preferred_location in corner_blocks.values():
+                    continue  # Never move corner blocks
+                
+                original_x, original_y = block.x, block.y
+                best_pos = None
+                best_overlap_count = float('inf')
+                
+                # Try positions in a grid pattern
+                for test_x in range(0, int(floorplan.bounding_width) + 100, 50):
+                    for test_y in range(0, int(floorplan.bounding_height) + 100, 50):
+                        block.x = test_x
+                        block.y = test_y
+                        
+                        # Count overlaps at this position
+                        overlap_count = sum(1 for other in floorplan.blocks 
+                                          if other != block and block.overlaps(other))
+                        
+                        if overlap_count == 0:
+                            best_pos = (test_x, test_y)
+                            moved_any = True
+                            break
+                        elif overlap_count < best_overlap_count:
+                            best_overlap_count = overlap_count
+                            best_pos = (test_x, test_y)
+                    
+                    if best_pos and best_overlap_count == 0:
+                        break
+                
+                if best_pos:
+                    block.x, block.y = best_pos
+                else:
+                    block.x, block.y = original_x, original_y
+        
+        floorplan.update_bounding_box()
+        if not moved_any and not floorplan.has_overlaps():
+            break
+    
+    # Final cleanup: Run optimization to compact without violating corner constraints
+    floorplan.update_bounding_box()
+    _optimize_placement(floorplan)
+
+
+def _violates_location_constraint(block, floorplan):
+    """Check if a block's current position violates its location constraint."""
+    pref = block.preferred_location
+    
+    if pref == "don't care":
+        return False
+    
+    floorplan.update_bounding_box()
+    mid_x = floorplan.bounding_width / 2
+    mid_y = floorplan.bounding_height / 2
+    block_center_x = block.x + block.width / 2
+    block_center_y = block.y + block.height / 2
+    
+    # Check quadrant constraints
+    if pref == 'top-left-quad':
+        return block_center_x > mid_x or block_center_y > mid_y
+    elif pref == 'top-right-quad':
+        return block_center_x < mid_x or block_center_y > mid_y
+    elif pref == 'bottom-left-quad':
+        return block_center_x > mid_x or block_center_y < mid_y
+    elif pref == 'bottom-right-quad':
+        return block_center_x < mid_x or block_center_y < mid_y
+    
+    return False
 
 
 def _simulated_annealing(initial_floorplan, max_aspect_ratio):
@@ -404,6 +777,13 @@ def _simulated_annealing(initial_floorplan, max_aspect_ratio):
         for _ in range(iterations_per_temp):
             # Generate neighbor solution
             neighbor = _generate_neighbor(current)
+            
+            # CRITICAL: Immediately reject solutions with overlaps
+            # Overlaps are NEVER acceptable - this is a hard constraint
+            if neighbor.has_overlaps():
+                continue  # Skip this neighbor, try again
+            
+            # Calculate cost (aspect ratio and constraints are handled via penalties)
             neighbor_cost = _calculate_cost(neighbor, max_aspect_ratio)
             
             # Calculate cost difference
@@ -422,6 +802,9 @@ def _simulated_annealing(initial_floorplan, max_aspect_ratio):
         # Cool down
         temperature *= cooling_rate
     
+    # Post-processing: Force corner blocks to exact corner positions
+    _enforce_corner_constraints(best)
+    
     return best
 
 
@@ -429,7 +812,7 @@ def _calculate_cost(floorplan, max_aspect_ratio):
     """
     Calculate cost of a floorplan.
     
-    Cost = area + aspect_ratio_penalty
+    Cost = area + aspect_ratio_penalty + location_constraint_penalty
     """
     floorplan.update_bounding_box()
     
@@ -445,6 +828,8 @@ def _calculate_cost(floorplan, max_aspect_ratio):
         floorplan.bounding_height / floorplan.bounding_width
     )
     
+    penalty = 0
+    
     # Heavy penalty if aspect ratio exceeds limit
     if aspect_ratio > max_aspect_ratio:
         penalty = area * (aspect_ratio - max_aspect_ratio) * 100
@@ -452,11 +837,140 @@ def _calculate_cost(floorplan, max_aspect_ratio):
         # Small penalty to encourage layouts closer to target
         penalty = area * (aspect_ratio - 1.0) * 0.5
     
-    # Penalty for overlaps (should not happen, but just in case)
+    # CRITICAL: Overlaps are NEVER acceptable - use massive penalty
     if floorplan.has_overlaps():
-        penalty += area * 100
+        penalty += area * 100000  # Make this 20x larger than constraint penalties
+    
+    # Heavy penalties for violating constraints (both equally important)
+    location_penalty = _calculate_location_penalty(floorplan)
+    neighbor_penalty = _calculate_neighbor_penalty(floorplan)
+    
+    # Use extremely heavy penalties to strictly enforce both types of constraints
+    # Must be less than overlap penalty (100000) but still very large
+    penalty += (location_penalty + neighbor_penalty) * area * 10000
     
     return area + penalty
+
+
+def _calculate_location_penalty(floorplan):
+    """
+    Calculate penalty for violating location constraints.
+    Returns a value between 0 (perfect) and number of violations.
+    """
+    if not floorplan.blocks:
+        return 0
+    
+    floorplan.update_bounding_box()
+    penalty = 0
+    
+    # Define boundaries
+    mid_x = floorplan.bounding_width / 2
+    mid_y = floorplan.bounding_height / 2
+    
+    for block in floorplan.blocks:
+        pref = block.preferred_location
+        
+        # Skip blocks without preferences
+        if pref == "don't care":
+            continue
+        
+        # Handle legacy names
+        if pref == 'top-left':
+            pref = 'top-left-corner'
+        elif pref == 'top-right':
+            pref = 'top-right-corner'
+        elif pref == 'bottom-left':
+            pref = 'bottom-left-corner'
+        elif pref == 'bottom-right':
+            pref = 'bottom-right-corner'
+        
+        block_center_x = block.x + block.width / 2
+        block_center_y = block.y + block.height / 2
+        
+        # Check corner constraints (VERY strict - must be exactly at corner)
+        tolerance = 2.0  # Allow only 2 pixels of tolerance
+        
+        if pref == 'top-left-corner':
+            # Block MUST be at (0, 0)
+            if block.x > tolerance or block.y > tolerance:
+                penalty += 1
+        
+        elif pref == 'top-right-corner':
+            # Block MUST be at right edge, top
+            expected_x = floorplan.bounding_width - block.width
+            if abs(block.x - expected_x) > tolerance or block.y > tolerance:
+                penalty += 1
+        
+        elif pref == 'bottom-left-corner':
+            # Block MUST be at left edge, bottom
+            expected_y = floorplan.bounding_height - block.height
+            if block.x > tolerance or abs(block.y - expected_y) > tolerance:
+                penalty += 1
+        
+        elif pref == 'bottom-right-corner':
+            # Block MUST be at right edge, bottom
+            expected_x = floorplan.bounding_width - block.width
+            expected_y = floorplan.bounding_height - block.height
+            if abs(block.x - expected_x) > tolerance or abs(block.y - expected_y) > tolerance:
+                penalty += 1
+        
+        # Check quadrant constraints (more flexible)
+        elif pref == 'top-left-quad':
+            if block_center_x > mid_x or block_center_y > mid_y:
+                penalty += 0.5
+        
+        elif pref == 'top-right-quad':
+            if block_center_x < mid_x or block_center_y > mid_y:
+                penalty += 0.5
+        
+        elif pref == 'bottom-left-quad':
+            if block_center_x > mid_x or block_center_y < mid_y:
+                penalty += 0.5
+        
+        elif pref == 'bottom-right-quad':
+            if block_center_x < mid_x or block_center_y < mid_y:
+                penalty += 0.5
+        
+        # Check center constraint
+        elif pref == 'center':
+            # Block center should be reasonably close to layout center
+            dist_from_center = abs(block_center_x - mid_x) + abs(block_center_y - mid_y)
+            max_dist = (floorplan.bounding_width + floorplan.bounding_height) / 4
+            if dist_from_center > max_dist * 0.6:  # Allow some flexibility
+                penalty += 0.5
+    
+    return penalty
+
+
+def _calculate_neighbor_penalty(floorplan):
+    """
+    Calculate penalty for violating neighbor/abutting constraints.
+    Returns number of neighbor relationships that are not satisfied.
+    """
+    if not floorplan.blocks:
+        return 0
+    
+    penalty = 0
+    
+    # Build a map of block names to blocks for quick lookup
+    block_map = {block.name: block for block in floorplan.blocks}
+    
+    for block in floorplan.blocks:
+        if block.neighbor:
+            # Check if the neighbor exists
+            if block.neighbor not in block_map:
+                # Neighbor doesn't exist - penalize
+                penalty += 1
+                continue
+            
+            neighbor_block = block_map[block.neighbor]
+            
+            # Check if blocks are actually abutting (adjacent)
+            if not block.abuts(neighbor_block):
+                # Not abutting - penalize heavily
+                penalty += 1
+    
+    return penalty
 
 
 def _generate_neighbor(floorplan):
@@ -474,6 +988,9 @@ def _generate_neighbor(floorplan):
     if not neighbor.blocks:
         return neighbor
     
+    # Build neighbor relationship map
+    has_neighbor = {block.name for block in neighbor.blocks if block.neighbor}
+    
     # Choose random perturbation with higher probability for more impactful moves
     perturbation = random.choices(
         ['swap', 'rotate', 'move', 'repack'],
@@ -481,24 +998,46 @@ def _generate_neighbor(floorplan):
     )[0]
     
     if perturbation == 'swap' and len(neighbor.blocks) >= 2:
-        # Swap positions of two random blocks
-        idx1, idx2 = random.sample(range(len(neighbor.blocks)), 2)
-        block1, block2 = neighbor.blocks[idx1], neighbor.blocks[idx2]
+        # Swap positions of two random blocks (avoid swapping blocks with neighbor constraints)
+        # Get blocks without neighbor constraints if possible
+        blocks_without_neighbors = [b for b in neighbor.blocks if b.name not in has_neighbor and not b.neighbor]
+        
+        if len(blocks_without_neighbors) >= 2:
+            # Swap only blocks without neighbor constraints
+            block1, block2 = random.sample(blocks_without_neighbors, 2)
+        else:
+            # Fall back to any two blocks
+            idx1, idx2 = random.sample(range(len(neighbor.blocks)), 2)
+            block1, block2 = neighbor.blocks[idx1], neighbor.blocks[idx2]
         
         # Swap positions
         block1.x, block2.x = block2.x, block1.x
         block1.y, block2.y = block2.y, block1.y
     
     elif perturbation == 'rotate':
-        # Rotate a random block (or multiple blocks)
-        num_rotations = random.randint(1, min(3, len(neighbor.blocks)))
-        blocks_to_rotate = random.sample(neighbor.blocks, num_rotations)
+        # Rotate a random block (avoid blocks with neighbor constraints)
+        blocks_without_neighbors = [b for b in neighbor.blocks if not b.neighbor]
+        
+        if blocks_without_neighbors:
+            num_rotations = random.randint(1, min(3, len(blocks_without_neighbors)))
+            blocks_to_rotate = random.sample(blocks_without_neighbors, num_rotations)
+        else:
+            # Fall back to rotating any block
+            num_rotations = random.randint(1, min(3, len(neighbor.blocks)))
+            blocks_to_rotate = random.sample(neighbor.blocks, num_rotations)
+        
         for block in blocks_to_rotate:
             block.rotate()
     
     elif perturbation == 'move':
-        # Move a random block to a new position
-        block = random.choice(neighbor.blocks)
+        # Move a random block to a new position (prefer blocks without neighbor constraints)
+        blocks_without_neighbors = [b for b in neighbor.blocks if not b.neighbor and b.name not in has_neighbor]
+        
+        if blocks_without_neighbors:
+            block = random.choice(blocks_without_neighbors)
+        else:
+            # If all blocks have constraints, pick randomly
+            block = random.choice(neighbor.blocks)
         
         # Generate new position (within reasonable bounds)
         neighbor.update_bounding_box()
@@ -510,6 +1049,16 @@ def _generate_neighbor(floorplan):
         
         block.x = new_x
         block.y = new_y
+        
+        # If this block has a neighbor, try to move the neighbor with it to maintain abutment
+        if block.neighbor:
+            neighbor_block = next((b for b in neighbor.blocks if b.name == block.neighbor), None)
+            if neighbor_block:
+                # Calculate offset and move neighbor
+                offset_x = neighbor_block.x - (block.x - new_x)
+                offset_y = neighbor_block.y - (block.y - new_y)
+                neighbor_block.x = offset_x
+                neighbor_block.y = offset_y
     
     elif perturbation == 'repack':
         # Repack all blocks in a different arrangement

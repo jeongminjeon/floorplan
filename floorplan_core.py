@@ -13,7 +13,17 @@ class Block:
             name: Block identifier
             width: Block width
             height: Block height
-            preferred_location: One of 'top-left', 'top-right', 'bottom-left', 'bottom-right', "don't care"
+            preferred_location: One of:
+                - 'top-left-quad': Top-left quadrant
+                - 'top-left-corner': Exact top-left corner
+                - 'top-right-quad': Top-right quadrant
+                - 'top-right-corner': Exact top-right corner
+                - 'bottom-left-quad': Bottom-left quadrant
+                - 'bottom-left-corner': Exact bottom-left corner
+                - 'bottom-right-quad': Bottom-right quadrant
+                - 'bottom-right-corner': Exact bottom-right corner
+                - 'center': Center of layout
+                - "don't care": No preference (default)
             neighbor: Optional name of neighboring block to abut
         """
         self.name = name

@@ -1,0 +1,72 @@
+[
+  {
+    "name": "b4",
+    "width": 300.0,
+    "height": 400.0,
+    "preferred_location": "top-left-corner",
+    "neighbor": null
+  },
+  {
+    "name": "b5",
+    "width": 500.0,
+    "height": 500.0,
+    "preferred_location": "bottom-right-corner",
+    "neighbor": null
+  },
+  {
+    "name": "b7",
+    "width": 500.0,
+    "height": 250.0,
+    "preferred_location": "bottom-left-corner",
+    "neighbor": null
+  },
+  {
+    "name": "b1",
+    "width": 300.0,
+    "height": 300.0,
+    "preferred_location": "don't care",
+    "neighbor": null
+  },
+  {
+    "name": "b2",
+    "width": 400.0,
+    "height": 400.0,
+    "preferred_location": "don't care",
+    "neighbor": null
+  },
+  {
+    "name": "b3",
+    "width": 400.0,
+    "height": 200.0,
+    "preferred_location": "don't care",
+    "neighbor": null
+  },
+  {
+    "name": "b6",
+    "width": 200.0,
+    "height": 400.0,
+    "preferred_location": "don't care",
+    "neighbor": null
+  },
+  {
+    "name": "b8",
+    "width": 400.0,
+    "height": 600.0,
+    "preferred_location": "don't care",
+    "neighbor": null
+  },
+  {
+    "name": "b9",
+    "width": 200.0,
+    "height": 500.0,
+    "preferred_location": "don't care",
+    "neighbor": null
+  },
+  {
+    "name": "b10",
+    "width": 300.0,
+    "height": 700.0,
+    "preferred_location": "don't care",
+    "neighbor": null
+  }
+]

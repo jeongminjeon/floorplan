@@ -27,7 +27,7 @@ Let's create a floorplan with 4 blocks:
 1. Block Name: `Processor`
 2. Width: `100`
 3. Height: `80`
-4. Preferred Location: Select `top-left`
+4. Preferred Location: Select `top-left-corner`
 5. Neighbor: Leave as `None`
 6. Click "Add Block"
 
@@ -43,7 +43,7 @@ Let's create a floorplan with 4 blocks:
 1. Block Name: `Storage`
 2. Width: `80`
 3. Height: `80`
-4. Preferred Location: Select `bottom-right`
+4. Preferred Location: Select `bottom-right-corner`
 5. Neighbor: Leave as `None`
 6. Click "Add Block"
 
@@ -51,7 +51,7 @@ Let's create a floorplan with 4 blocks:
 1. Block Name: `Graphics`
 2. Width: `120`
 3. Height: `70`
-4. Preferred Location: Select `don't care`
+4. Preferred Location: Select `center`
 5. Neighbor: Leave as `None`
 6. Click "Add Block"
 
@@ -108,8 +108,11 @@ Preliminary layout of rooms or departments.
 ### 1. Start with Large Blocks
 Add your largest blocks first - the algorithm handles them better.
 
-### 2. Use Location Preferences Sparingly
-Only specify corner locations for blocks that really need them. Too many constraints make optimization harder.
+### 2. Use Location Preferences Wisely
+- **Corners**: Use for blocks that must be at exact corner positions
+- **Quadrants**: Use when you want a block in a general area but with flexibility
+- **Center**: Use for blocks that should be centrally located
+- Only specify locations for blocks that really need them - too many constraints make optimization harder
 
 ### 3. Neighbor Relationships
 Use the neighbor feature for blocks that must be adjacent (e.g., CPU and cooling system).
@@ -122,7 +125,11 @@ Try different combinations of preferences and see which gives the smallest area!
 ### Block Input Section:
 - **Block Name**: Unique name for this block
 - **Width & Height**: Size of the block
-- **Preferred Location**: Where you want it (optional)
+- **Preferred Location**: Where you want it (optional):
+  - **Corners**: Exact corner placement (e.g., `top-left-corner`)
+  - **Quadrants**: General region (e.g., `top-left-quad`)
+  - **Center**: Middle of the layout
+  - **Don't care**: No preference (optimal placement)
 - **Neighbor**: Which block to place next to (optional)
 - **Add Block**: Adds the block to your list
 
@@ -137,6 +144,17 @@ Try different combinations of preferences and see which gives the smallest area!
 - **Save Blocks**: Save your blocks to a file for later use
 - **Load Blocks**: Load blocks from a previously saved file
 - **Calculate Layout**: Run the optimization algorithm
+
+### Block List Display Order:
+The block list is automatically sorted by constraint priority:
+1. **Highest priority**: Blocks with BOTH location AND neighbor constraints
+2. **Corner locations**: Blocks at specific corners
+3. **Quadrant locations**: Blocks in specific quadrants
+4. **Center location**: Blocks at center
+5. **Neighbor only**: Blocks with only neighbor constraints
+6. **Lowest priority**: Blocks without any constraints
+
+Within each group, blocks are sorted alphabetically (b1, b2, b3, etc.).
 
 ## Troubleshooting
 
@@ -187,6 +205,8 @@ Example:
 ### Simulated Annealing Algorithm
 The tool uses a sophisticated optimization technique called Simulated Annealing:
 - Tests thousands of different block arrangements
+- **Strictly enforces location constraints** (corners, quadrants, center)
+- **Strictly enforces neighbor/abutting constraints** (adjacent placement)
 - Gradually improves the solution over time
 - Can escape "local optima" (solutions that look good but aren't the best)
 - Results in 20-40% better space usage than simple methods
@@ -195,7 +215,7 @@ The tool uses a sophisticated optimization technique called Simulated Annealing:
 Blocks can rotate 90 degrees. A block that's `100 x 50` can become `50 x 100` if it helps the layout.
 
 ### Abutting (Neighbors)
-When you set Block B as a neighbor of Block A, the tool tries to place them edge-to-edge with no gap.
+When you set Block B as a neighbor of Block A, the tool **strictly enforces** that they are placed edge-to-edge with no gap. The algorithm uses heavy penalties to ensure neighbor constraints are always satisfied.
 
 ### Aspect Ratio Control
 This prevents overly narrow layouts:
@@ -267,20 +287,20 @@ Take note of the final dimensions shown in the info label.
 ### Example 1: Office Layout
 Create these blocks, then save as `office.json`:
 ```
-Reception: 120 x 80 (top-left)
-Conference: 150 x 100 (don't care)
-Workspace: 200 x 150 (don't care, neighbor: Conference)
-Kitchen: 80 x 60 (bottom-right)
+Reception: 120 x 80 (top-left-corner)
+Conference: 150 x 100 (top-right-quad)
+Workspace: 200 x 150 (center, neighbor: Conference)
+Kitchen: 80 x 60 (bottom-right-corner)
 ```
 
 ### Example 2: Computer Motherboard
 Create these blocks, then save as `motherboard.json`:
 ```
-CPU: 40 x 40 (top-left)
-RAM: 80 x 20 (don't care, neighbor: CPU)
-GPU: 120 x 60 (don't care)
-Storage: 30 x 30 (bottom-right)
-PowerSupply: 50 x 50 (bottom-left)
+CPU: 40 x 40 (top-left-corner)
+RAM: 80 x 20 (top-left-quad, neighbor: CPU)
+GPU: 120 x 60 (center)
+Storage: 30 x 30 (bottom-right-corner)
+PowerSupply: 50 x 50 (bottom-left-corner)
 ```
 
 **Tip**: Once saved, you can quickly reload these projects anytime!
