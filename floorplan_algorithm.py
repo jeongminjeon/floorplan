@@ -713,9 +713,155 @@ def _enforce_corner_constraints(floorplan):
         if not moved_any and not floorplan.has_overlaps():
             break
     
-    # Final cleanup: Run optimization to compact without violating corner constraints
+    # Final cleanup: Aggressively compact to remove gaps while keeping corners locked
     floorplan.update_bounding_box()
-    _optimize_placement(floorplan)
+    _compact_with_locked_corners(floorplan, corner_blocks)
+
+
+def _compact_with_locked_corners(floorplan, corner_blocks):
+    """
+    Aggressively compact the floorplan while keeping corner blocks locked.
+    This fills gaps created by corner enforcement.
+    """
+    if not floorplan.blocks:
+        return
+    
+    # Get set of corner block objects
+    locked_blocks = set(corner_blocks.values())
+    
+    # Multiple passes to fill gaps
+    max_passes = 20
+    for pass_num in range(max_passes):
+        floorplan.update_bounding_box()
+        improved = False
+        
+        # Sort blocks by their distance from origin (process closer blocks first)
+        movable_blocks = [b for b in floorplan.blocks if b not in locked_blocks]
+        movable_blocks.sort(key=lambda b: b.x + b.y)
+        
+        for block in movable_blocks:
+            # Try to move block left and up to fill gaps
+            original_x, original_y = block.x, block.y
+            
+            # Try moving left in larger steps first, then fine-tune
+            for step in [50, 10, 5, 1]:
+                while block.x >= step:
+                    block.x -= step
+                    if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
+                        block.x += step
+                        break
+                    improved = True
+            
+            # Try moving up
+            for step in [50, 10, 5, 1]:
+                while block.y >= step:
+                    block.y -= step
+                    if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
+                        block.y += step
+                        break
+                    improved = True
+            
+            # Also try moving to completely fill any gaps
+            # Try positions closer to other blocks
+            if block.x != original_x or block.y != original_y:
+                improved = True
+        
+        # Try to shrink bounding box by moving blocks from edges
+        if pass_num % 3 == 0:  # Every 3rd pass
+            floorplan.update_bounding_box()
+            
+            # Find blocks at the right edge (excluding right-corner blocks)
+            for block in movable_blocks:
+                if block.x + block.width >= floorplan.bounding_width - 10:
+                    # Try moving this block left
+                    original_x = block.x
+                    for new_x in range(0, int(original_x), 10):
+                        block.x = new_x
+                        if not floorplan.has_overlaps() and not _violates_location_constraint(block, floorplan):
+                            improved = True
+                            break
+                        block.x = original_x
+            
+            # Find blocks at the bottom edge (excluding bottom-corner blocks)
+            for block in movable_blocks:
+                if block.y + block.height >= floorplan.bounding_height - 10:
+                    # Try moving this block up
+                    original_y = block.y
+                    for new_y in range(0, int(original_y), 10):
+                        block.y = new_y
+                        if not floorplan.has_overlaps() and not _violates_location_constraint(block, floorplan):
+                            improved = True
+                            break
+                        block.y = original_y
+        
+        if not improved:
+            break
+    
+    # Final "tetris-style" packing: Try to fit blocks into any gaps
+    # Sort blocks by size (larger blocks first)
+    movable_blocks.sort(key=lambda b: b.width * b.height, reverse=True)
+    
+    for block in movable_blocks:
+        original_x, original_y = block.x, block.y
+        best_x, best_y = original_x, original_y
+        best_density = _calculate_local_density(block, floorplan)
+        
+        # Try a grid of positions
+        step = 20
+        for test_x in range(0, int(floorplan.bounding_width) - int(block.width) + 1, step):
+            for test_y in range(0, int(floorplan.bounding_height) - int(block.height) + 1, step):
+                block.x, block.y = test_x, test_y
+                
+                if (not floorplan.has_overlaps() and 
+                    not _violates_location_constraint(block, floorplan)):
+                    # Prefer positions with higher local density (more blocks nearby)
+                    density = _calculate_local_density(block, floorplan)
+                    if density > best_density or (density == best_density and test_x + test_y < best_x + best_y):
+                        best_density = density
+                        best_x, best_y = test_x, test_y
+        
+        block.x, block.y = best_x, best_y
+        
+        # Fine-tune position
+        while block.x > 0:
+            block.x -= 1
+            if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
+                block.x += 1
+                break
+        
+        while block.y > 0:
+            block.y -= 1
+            if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
+                block.y += 1
+                break
+    
+    floorplan.update_bounding_box()
+
+
+def _calculate_local_density(block, floorplan):
+    """
+    Calculate how many other blocks are near this block (encourages tight packing).
+    Higher values mean more blocks nearby.
+    """
+    density = 0
+    for other in floorplan.blocks:
+        if other == block:
+            continue
+        
+        # Calculate distance between block centers
+        dx = abs((block.x + block.width/2) - (other.x + other.width/2))
+        dy = abs((block.y + block.height/2) - (other.y + other.height/2))
+        distance = (dx*dx + dy*dy) ** 0.5
+        
+        # Blocks within 200 units contribute to density
+        if distance < 200:
+            density += 1
+        
+        # Adjacent blocks contribute more
+        if block.abuts(other):
+            density += 5
+    
+    return density
 
 
 def _violates_location_constraint(block, floorplan):
