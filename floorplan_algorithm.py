@@ -8,13 +8,14 @@ import math
 from floorplan_core import Block, FloorPlan
 
 
-def calculate_floorplan(blocks, max_aspect_ratio=2.0):
+def calculate_floorplan(blocks, max_aspect_ratio=2.0, initial_floorplan=None):
     """
     Calculate optimal floorplan layout for given blocks using Simulated Annealing.
     
     Args:
         blocks: List of Block objects
         max_aspect_ratio: Maximum allowed width/height or height/width ratio (default: 2.0)
+        initial_floorplan: Optional FloorPlan to use as starting point for progressive refinement
     
     Returns:
         FloorPlan object with blocks positioned to minimize bounding rectangle
@@ -34,14 +35,19 @@ def calculate_floorplan(blocks, max_aspect_ratio=2.0):
     if max_aspect_ratio < 1.0:
         raise ValueError(f"Max aspect ratio must be >= 1.0, got {max_aspect_ratio}")
     
-    # Create a copy of blocks to avoid modifying originals
-    blocks_copy = [copy.deepcopy(block) for block in blocks]
-    
-    # Get initial solution using greedy approach
-    initial_floorplan = _get_initial_solution(blocks_copy)
+    # If initial_floorplan provided, use it as starting point (progressive refinement)
+    if initial_floorplan is not None:
+        # Deep copy the initial floorplan to avoid modifying it
+        initial_solution = copy.deepcopy(initial_floorplan)
+    else:
+        # Create a copy of blocks to avoid modifying originals
+        blocks_copy = [copy.deepcopy(block) for block in blocks]
+        
+        # Get initial solution using greedy approach
+        initial_solution = _get_initial_solution(blocks_copy)
     
     # Apply Simulated Annealing optimization
-    optimized_floorplan = _simulated_annealing(initial_floorplan, max_aspect_ratio)
+    optimized_floorplan = _simulated_annealing(initial_solution, max_aspect_ratio)
     
     return optimized_floorplan
 

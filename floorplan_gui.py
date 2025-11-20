@@ -128,6 +128,21 @@ class FloorPlanGUI:
                               font=("Arial", 8), fg="gray")
         aspect_info.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 5))
         
+        # Progressive refinement checkbox
+        self.use_previous_var = tk.BooleanVar(value=False)
+        refine_checkbox = tk.Checkbutton(
+            settings_frame, 
+            text="Use previous result as starting point",
+            variable=self.use_previous_var,
+            font=("Arial", 9)
+        )
+        refine_checkbox.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(5, 2))
+        
+        # Info label for progressive refinement
+        refine_info = tk.Label(settings_frame, text="Gradually improves existing layout", 
+                              font=("Arial", 8), fg="gray")
+        refine_info.grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=(0, 5))
+        
         # Blocks list
         list_label = tk.Label(left_panel, text="Added Blocks:", font=("Arial", 11, "bold"))
         list_label.pack(pady=(10, 5))
@@ -447,8 +462,13 @@ class FloorPlanGUI:
             # Parse aspect ratio
             max_aspect_ratio = self._parse_aspect_ratio()
             
+            # Check if we should use previous result as starting point
+            initial_floorplan = None
+            if self.use_previous_var.get() and self.floorplan is not None:
+                initial_floorplan = self.floorplan
+            
             # Calculate floorplan with aspect ratio constraint
-            self.floorplan = calculate_floorplan(self.blocks, max_aspect_ratio)
+            self.floorplan = calculate_floorplan(self.blocks, max_aspect_ratio, initial_floorplan)
             
             # Calculate actual aspect ratio
             actual_ratio = max(
