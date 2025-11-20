@@ -722,6 +722,9 @@ def _enforce_corner_constraints(floorplan):
     # Final cleanup: Aggressively compact to remove gaps while keeping corners locked
     floorplan.update_bounding_box()
     _compact_with_locked_corners(floorplan, corner_blocks)
+    
+    # Additional pass: Explicitly detect and fill gaps
+    _fill_detected_gaps(floorplan, corner_blocks)
 
 
 def _compact_with_locked_corners(floorplan, corner_blocks):
@@ -803,43 +806,68 @@ def _compact_with_locked_corners(floorplan, corner_blocks):
         if not improved:
             break
     
-    # Final "tetris-style" packing: Try to fit blocks into any gaps
-    # Sort blocks by size (larger blocks first)
-    movable_blocks.sort(key=lambda b: b.width * b.height, reverse=True)
-    
+    # Simple final compaction - no complex tetris packing
     for block in movable_blocks:
-        original_x, original_y = block.x, block.y
-        best_x, best_y = original_x, original_y
-        best_density = _calculate_local_density(block, floorplan)
-        
-        # Try a grid of positions
-        step = 20
-        for test_x in range(0, int(floorplan.bounding_width) - int(block.width) + 1, step):
-            for test_y in range(0, int(floorplan.bounding_height) - int(block.height) + 1, step):
-                block.x, block.y = test_x, test_y
-                
-                if (not floorplan.has_overlaps() and 
-                    not _violates_location_constraint(block, floorplan)):
-                    # Prefer positions with higher local density (more blocks nearby)
-                    density = _calculate_local_density(block, floorplan)
-                    if density > best_density or (density == best_density and test_x + test_y < best_x + best_y):
-                        best_density = density
-                        best_x, best_y = test_x, test_y
-        
-        block.x, block.y = best_x, best_y
-        
-        # Fine-tune position
+        # Move left as far as possible
         while block.x > 0:
             block.x -= 1
             if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
                 block.x += 1
                 break
         
+        # Move up as far as possible
         while block.y > 0:
             block.y -= 1
             if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
                 block.y += 1
                 break
+    
+    floorplan.update_bounding_box()
+
+
+def _fill_detected_gaps(floorplan, corner_blocks):
+    """
+    Simple gap reduction: just compact blocks toward origin.
+    No complex algorithms - just slide left and up repeatedly.
+    """
+    if not floorplan.blocks:
+        return
+    
+    locked_blocks = set(corner_blocks.values())
+    movable_blocks = [b for b in floorplan.blocks if b not in locked_blocks]
+    
+    if not movable_blocks:
+        return
+    
+    # Simple compaction: repeat sliding blocks left and up
+    for iteration in range(10):
+        improved = False
+        
+        # Process blocks in random order each iteration for better mixing
+        import random
+        random.shuffle(movable_blocks)
+        
+        for block in movable_blocks:
+            original_x, original_y = block.x, block.y
+            
+            # Slide left as far as possible
+            while block.x > 0:
+                block.x -= 1
+                if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
+                    block.x += 1
+                    break
+                improved = True
+            
+            # Slide up as far as possible
+            while block.y > 0:
+                block.y -= 1
+                if floorplan.has_overlaps() or _violates_location_constraint(block, floorplan):
+                    block.y += 1
+                    break
+                improved = True
+        
+        if not improved:
+            break
     
     floorplan.update_bounding_box()
 
