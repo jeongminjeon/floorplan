@@ -17,7 +17,7 @@ class FloorPlanGUI:
         """Initialize the GUI."""
         self.root = root
         self.root.title("Floorplanning Tool")
-        self.root.geometry("1200x700")
+        self.root.geometry("1400x1000")
         
         # Data
         self.blocks = []
@@ -170,19 +170,33 @@ class FloorPlanGUI:
                                 command=self._clear_all, bg="#ff9800", fg="white")
         clear_button.pack(side=tk.LEFT, padx=5)
         
-        # Save/Load buttons
+        # Save/Load buttons for blocks
         save_load_frame = tk.Frame(left_panel)
-        save_load_frame.pack(pady=10)
+        save_load_frame.pack(pady=5)
         
         save_button = tk.Button(save_load_frame, text="Save Blocks", 
                                command=self._save_blocks, bg="#4CAF50", fg="white",
-                               font=("Arial", 10))
-        save_button.pack(side=tk.LEFT, padx=5)
+                               font=("Arial", 9))
+        save_button.pack(side=tk.LEFT, padx=3)
         
         load_button = tk.Button(save_load_frame, text="Load Blocks", 
                                command=self._load_blocks, bg="#2196F3", fg="white",
-                               font=("Arial", 10))
-        load_button.pack(side=tk.LEFT, padx=5)
+                               font=("Arial", 9))
+        load_button.pack(side=tk.LEFT, padx=3)
+        
+        # Save/Load buttons for layout
+        layout_save_load_frame = tk.Frame(left_panel)
+        layout_save_load_frame.pack(pady=5)
+        
+        save_layout_button = tk.Button(layout_save_load_frame, text="Save Layout", 
+                               command=self._save_layout, bg="#8BC34A", fg="white",
+                               font=("Arial", 9))
+        save_layout_button.pack(side=tk.LEFT, padx=3)
+        
+        load_layout_button = tk.Button(layout_save_load_frame, text="Load Layout", 
+                               command=self._load_layout, bg="#00BCD4", fg="white",
+                               font=("Arial", 9))
+        load_layout_button.pack(side=tk.LEFT, padx=3)
         
         # Calculate button
         calculate_button = tk.Button(left_panel, text="Calculate Layout", 
@@ -452,6 +466,146 @@ class FloorPlanGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load blocks: {str(e)}")
     
+    def _save_layout(self):
+        """Save the current floorplan layout to a JSON file."""
+        if not self.floorplan or not self.floorplan.blocks:
+            messagebox.showwarning("Warning", "No layout to save. Please calculate a layout first.")
+            return
+        
+        # Ask user for file location
+        filename = filedialog.asksaveasfilename(
+            title="Save Layout",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if not filename:
+            return  # User cancelled
+        
+        try:
+            # Convert floorplan to dictionary format
+            layout_data = {
+                "bounding_width": self.floorplan.bounding_width,
+                "bounding_height": self.floorplan.bounding_height,
+                "blocks": []
+            }
+            
+            for block in self.floorplan.blocks:
+                block_dict = {
+                    "name": block.name,
+                    "original_width": block.original_width,
+                    "original_height": block.original_height,
+                    "width": block.width,
+                    "height": block.height,
+                    "x": block.x,
+                    "y": block.y,
+                    "rotated": block.rotated,
+                    "preferred_location": block.preferred_location,
+                    "neighbor": block.neighbor
+                }
+                layout_data["blocks"].append(block_dict)
+            
+            # Save to file
+            with open(filename, 'w') as f:
+                json.dump(layout_data, f, indent=2)
+            
+            messagebox.showinfo("Success", f"Saved layout to {filename}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save layout: {str(e)}")
+    
+    def _load_layout(self):
+        """Load a floorplan layout from a JSON file."""
+        # Ask user for file location
+        filename = filedialog.askopenfilename(
+            title="Load Layout",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if not filename:
+            return  # User cancelled
+        
+        try:
+            # Load from file
+            with open(filename, 'r') as f:
+                layout_data = json.load(f)
+            
+            # Validate data
+            if not isinstance(layout_data, dict) or "blocks" not in layout_data:
+                raise ValueError("Invalid layout file format")
+            
+            # Create new floorplan
+            from floorplan_core import FloorPlan, Block
+            self.floorplan = FloorPlan()
+            self.blocks = []
+            
+            # Load blocks with their positions
+            for block_dict in layout_data["blocks"]:
+                name = block_dict.get("name", "")
+                original_width = float(block_dict.get("original_width", 0))
+                original_height = float(block_dict.get("original_height", 0))
+                width = float(block_dict.get("width", 0))
+                height = float(block_dict.get("height", 0))
+                x = float(block_dict.get("x", 0))
+                y = float(block_dict.get("y", 0))
+                rotated = block_dict.get("rotated", False)
+                location = block_dict.get("preferred_location", "don't care")
+                neighbor = block_dict.get("neighbor", None)
+                
+                # Validate
+                if not name or width <= 0 or height <= 0:
+                    raise ValueError(f"Invalid block data: {block_dict}")
+                
+                # Create block with original dimensions first
+                block = Block(name, original_width, original_height, location, neighbor)
+                block.width = width
+                block.height = height
+                block.x = x
+                block.y = y
+                block.rotated = rotated
+                
+                self.blocks.append(block)
+                self.floorplan.add_block(block)
+            
+            # Set bounding box
+            self.floorplan.bounding_width = layout_data.get("bounding_width", 0)
+            self.floorplan.bounding_height = layout_data.get("bounding_height", 0)
+            
+            # Sort blocks by constraints first, then by name
+            self.blocks.sort(key=self._constraint_sort_key)
+            
+            # Update listbox with sorted blocks
+            self.blocks_listbox.delete(0, tk.END)
+            for block in self.blocks:
+                display_text = f"{block.name} ({block.original_width}x{block.original_height})"
+                if block.preferred_location != "don't care":
+                    display_text += f" - {block.preferred_location}"
+                if block.neighbor:
+                    display_text += f" - abuts {block.neighbor}"
+                self.blocks_listbox.insert(tk.END, display_text)
+            
+            # Update neighbor dropdown
+            self._update_neighbor_dropdown()
+            
+            # Calculate actual aspect ratio
+            actual_ratio = max(
+                self.floorplan.bounding_width / self.floorplan.bounding_height if self.floorplan.bounding_height > 0 else 1,
+                self.floorplan.bounding_height / self.floorplan.bounding_width if self.floorplan.bounding_width > 0 else 1
+            )
+            
+            # Update info label
+            info_text = f"Bounding Box: {self.floorplan.bounding_width:.1f} x {self.floorplan.bounding_height:.1f}"
+            info_text += f" | Area: {self.floorplan.get_area():.1f} | Aspect: 1:{actual_ratio:.2f}"
+            self.info_label.config(text=info_text)
+            
+            # Draw the floorplan
+            self._draw_floorplan()
+            
+            messagebox.showinfo("Success", f"Loaded layout with {len(self.blocks)} blocks from {filename}")
+        except json.JSONDecodeError:
+            messagebox.showerror("Error", "Invalid JSON file format")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load layout: {str(e)}")
+    
     def _calculate_layout(self):
         """Calculate and display the floorplan."""
         if not self.blocks:
@@ -526,7 +680,7 @@ class FloorPlanGUI:
             canvas_height = 500
         
         # Calculate scale factor with margins
-        margin = 40
+        margin = 20
         scale_x = (canvas_width - 2 * margin) / self.floorplan.bounding_width
         scale_y = (canvas_height - 2 * margin) / self.floorplan.bounding_height
         scale = min(scale_x, scale_y)
