@@ -1,0 +1,126 @@
+{
+  "bounding_width": 1466.0,
+  "bounding_height": 1223.0,
+  "blocks": [
+    {
+      "name": "b4",
+      "original_width": 300.0,
+      "original_height": 400.0,
+      "width": 300.0,
+      "height": 400.0,
+      "x": 0,
+      "y": 0,
+      "rotated": false,
+      "preferred_location": "top-left-corner",
+      "neighbor": null
+    },
+    {
+      "name": "b10",
+      "original_width": 300.0,
+      "original_height": 700.0,
+      "width": 700.0,
+      "height": 300.0,
+      "x": 700.0,
+      "y": 0,
+      "rotated": true,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b2",
+      "original_width": 400.0,
+      "original_height": 400.0,
+      "width": 400.0,
+      "height": 400.0,
+      "x": 300.0,
+      "y": 0,
+      "rotated": true,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b9",
+      "original_width": 200.0,
+      "original_height": 500.0,
+      "width": 200.0,
+      "height": 500.0,
+      "x": 0,
+      "y": 400.0,
+      "rotated": false,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b8",
+      "original_width": 400.0,
+      "original_height": 600.0,
+      "width": 600.0,
+      "height": 400.0,
+      "x": 200.0,
+      "y": 400.0,
+      "rotated": true,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b3",
+      "original_width": 330.0,
+      "original_height": 650.0,
+      "width": 650.0,
+      "height": 330.0,
+      "x": 800.0,
+      "y": 300.0,
+      "rotated": true,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b1",
+      "original_width": 270.0,
+      "original_height": 440.0,
+      "width": 440.0,
+      "height": 270.0,
+      "x": 0,
+      "y": 900.0,
+      "rotated": true,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b5",
+      "original_width": 280.0,
+      "original_height": 360.0,
+      "width": 280.0,
+      "height": 360.0,
+      "x": 440.0,
+      "y": 800.0,
+      "rotated": false,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b6",
+      "original_width": 200.0,
+      "original_height": 400.0,
+      "width": 200.0,
+      "height": 400.0,
+      "x": 720.0,
+      "y": 800.0,
+      "rotated": false,
+      "preferred_location": "don't care",
+      "neighbor": null
+    },
+    {
+      "name": "b7",
+      "original_width": 530.0,
+      "original_height": 375.0,
+      "width": 530.0,
+      "height": 375.0,
+      "x": 936.0,
+      "y": 848.0,
+      "rotated": false,
+      "preferred_location": "bottom-right-corner",
+      "neighbor": null
+    }
+  ]
+}
